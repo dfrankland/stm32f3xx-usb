@@ -1,0 +1,17 @@
+[package]
+name = "stm32f103xx-usb"
+version = "0.1.0"
+edition = "2018"
+authors = ["Matti Virkkunen <mvirkkunen@gmail.com>"]
+
+[dependencies]
+bare-metal = "0.2.4"
+vcell = "0.1.0"
+cortex-m = "0.5.8"
+stm32f1xx-hal = { version = "0.1.1", features = ["stm32f103", "rt"] }
+usb-device = { git = "https://github.com/mvirkkunen/usb-device", rev = "e58e30f3b9c9bf4aab00ea039d129b964a3fd2d3" }
+
+[dev-dependencies]
+cortex-m-rt = "0.6.7"
+cortex-m-rtfm = "0.4.0"
+panic-semihosting = "0.5.1"
