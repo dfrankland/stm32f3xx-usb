@@ -1,14 +1,16 @@
 use crate::atomic_mutex::AtomicMutex;
-use crate::endpoint::{calculate_count_rx, Endpoint, EndpointStatus, NUM_ENDPOINTS};
+use crate::endpoint::{
+    calculate_count_rx, Endpoint, EndpointStatus, GenericEndpoint, NUM_ENDPOINTS,
+};
 use bare_metal::Mutex;
 use core::cell::RefCell;
 use core::mem;
 use cortex_m::asm::delay;
 use cortex_m::interrupt;
-use stm32f1xx_hal::gpio::{self, gpioa};
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::rcc;
-use stm32f1xx_hal::stm32::{RCC, USB};
+use stm32f3xx_hal::gpio::{self, gpioa};
+use stm32f3xx_hal::prelude::*;
+use stm32f3xx_hal::rcc;
+use stm32f3xx_hal::stm32::{RCC, USB_FS};
 use usb_device::bus::{PollResult, UsbBusAllocator};
 use usb_device::endpoint::{EndpointAddress, EndpointType};
 use usb_device::{Result, UsbDirection, UsbError};
@@ -18,9 +20,9 @@ struct Reset {
     pin: Mutex<RefCell<gpioa::PA12<gpio::Output<gpio::PushPull>>>>,
 }
 
-/// USB peripheral driver for STM32F103 microcontrollers.
+/// USB peripheral driver for STM32F3xx microcontrollers.
 pub struct UsbBus {
-    regs: AtomicMutex<USB>,
+    regs: AtomicMutex<USB_FS>,
     endpoints: [Endpoint; NUM_ENDPOINTS],
     next_ep_mem: usize,
     max_endpoint: usize,
@@ -28,7 +30,7 @@ pub struct UsbBus {
 }
 
 impl UsbBus {
-    fn new(regs: USB, apb1: &mut rcc::APB1, reset: Option<Reset>) -> UsbBusAllocator<Self> {
+    fn new(regs: USB_FS, apb1: &mut rcc::APB1, reset: Option<Reset>) -> UsbBusAllocator<Self> {
         // TODO: apb1.enr is not public, figure out how this should really interact with the HAL
         // crate
 
@@ -59,16 +61,17 @@ impl UsbBus {
     }
 
     /// Constructs a new USB peripheral driver.
-    pub fn usb(regs: USB, apb1: &mut rcc::APB1) -> UsbBusAllocator<Self> {
+    pub fn usb(regs: USB_FS, apb1: &mut rcc::APB1) -> UsbBusAllocator<Self> {
         UsbBus::new(regs, apb1, None)
     }
 
     /// Constructs a new USB peripheral driver with the "reset" method enabled.
     pub fn usb_with_reset<M>(
-        regs: USB,
+        regs: USB_FS,
         apb1: &mut rcc::APB1,
         clocks: &rcc::Clocks,
-        crh: &mut gpioa::CRH,
+        moder: &mut gpioa::MODER,
+        otyper: &mut gpioa::OTYPER,
         pa12: gpioa::PA12<M>,
     ) -> UsbBusAllocator<Self> {
         UsbBus::new(
@@ -76,7 +79,7 @@ impl UsbBus {
             apb1,
             Some(Reset {
                 delay: clocks.sysclk().0,
-                pin: Mutex::new(RefCell::new(pa12.into_push_pull_output(crh))),
+                pin: Mutex::new(RefCell::new(pa12.into_push_pull_output(moder, otyper))),
             }),
         )
     }
@@ -162,14 +165,10 @@ impl usb_device::bus::UsbBus for UsbBus {
         interrupt::free(|cs| {
             let regs = self.regs.lock(cs);
 
-            regs.cntr.modify(|_, w| w.pdwn().clear_bit());
-
-            // There is a chip specific startup delay. For STM32F103xx it's 1µs and this should wait for
-            // at least that long.
-            delay(72);
+            regs.usb_cntr.modify(|_, w| w.pdwn().clear_bit());
 
             regs.btable.modify(|_, w| unsafe { w.btable().bits(0) });
-            regs.cntr.modify(|_, w| {
+            regs.usb_cntr.modify(|_, w| {
                 w.fres()
                     .clear_bit()
                     .resetm()
@@ -194,8 +193,7 @@ impl usb_device::bus::UsbBus for UsbBus {
             let regs = self.regs.lock(cs);
 
             regs.istr.modify(|_, w| unsafe { w.bits(0) });
-            regs.daddr
-                .modify(|_, w| unsafe { w.ef().set_bit().add().bits(0) });
+            regs.daddr.modify(|_, w| w.ef().set_bit().add().bit(false));
 
             for ep in self.endpoints.iter() {
                 ep.configure(cs);
@@ -208,7 +206,7 @@ impl usb_device::bus::UsbBus for UsbBus {
             self.regs
                 .lock(cs)
                 .daddr
-                .modify(|_, w| unsafe { w.add().bits(addr as u8) });
+                .modify(|_, w| w.add().bit(addr != 0));
         });
     }
 
@@ -254,17 +252,15 @@ impl usb_device::bus::UsbBus for UsbBus {
             let mut bit = 1;
 
             for ep in &self.endpoints[0..=self.max_endpoint] {
-                let v = ep.read_reg();
-
-                if v.ctr_rx().bit_is_set() {
+                if ep.ctr_rx_bit_is_set() {
                     ep_out |= bit;
 
-                    if v.setup().bit_is_set() {
+                    if ep.setup_bit_is_set() {
                         ep_setup |= bit;
                     }
                 }
 
-                if v.ctr_tx().bit_is_set() {
+                if ep.ctr_tx_bit_is_set() {
                     ep_in_complete |= bit;
 
                     interrupt::free(|cs| {
@@ -320,11 +316,10 @@ impl usb_device::bus::UsbBus for UsbBus {
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
         let ep = &self.endpoints[ep_addr.index()];
-        let reg_v = ep.read_reg();
 
         let status = match ep_addr.direction() {
-            UsbDirection::In => reg_v.stat_tx().bits(),
-            UsbDirection::Out => reg_v.stat_rx().bits(),
+            UsbDirection::In => ep.stat_tx_bits(),
+            UsbDirection::Out => ep.stat_rx_bits(),
         };
 
         status == (EndpointStatus::Stall as u8)
@@ -334,7 +329,7 @@ impl usb_device::bus::UsbBus for UsbBus {
         interrupt::free(|cs| {
             self.regs
                 .lock(cs)
-                .cntr
+                .usb_cntr
                 .modify(|_, w| w.fsusp().set_bit().lpmode().set_bit());
         });
     }
@@ -343,7 +338,7 @@ impl usb_device::bus::UsbBus for UsbBus {
         interrupt::free(|cs| {
             self.regs
                 .lock(cs)
-                .cntr
+                .usb_cntr
                 .modify(|_, w| w.fsusp().clear_bit().lpmode().clear_bit());
         });
     }
@@ -354,13 +349,13 @@ impl usb_device::bus::UsbBus for UsbBus {
 
             match self.reset {
                 Some(ref reset) => {
-                    let pdwn = regs.cntr.read().pdwn().bit_is_set();
-                    regs.cntr.modify(|_, w| w.pdwn().set_bit());
+                    let pdwn = regs.usb_cntr.read().pdwn().bit_is_set();
+                    regs.usb_cntr.modify(|_, w| w.pdwn().set_bit());
 
                     reset.pin.borrow(cs).borrow_mut().set_low();
                     delay(reset.delay);
 
-                    regs.cntr.modify(|_, w| w.pdwn().bit(pdwn));
+                    regs.usb_cntr.modify(|_, w| w.pdwn().bit(pdwn));
 
                     Ok(())
                 }

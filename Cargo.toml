@@ -1,17 +1,32 @@
 [package]
-name = "stm32f103xx-usb"
+name = "stm32f3xx-usb"
 version = "0.1.0"
 edition = "2018"
-authors = ["Matti Virkkunen <mvirkkunen@gmail.com>"]
+authors = ["Dylan Frankalnd <dylan@frankland.io>"]
 
 [dependencies]
 bare-metal = "0.2.4"
 vcell = "0.1.0"
 cortex-m = "0.5.8"
-stm32f1xx-hal = { version = "0.1.1", features = ["stm32f103", "rt"] }
+stm32f3xx-hal = "0.1.3"
 usb-device = { git = "https://github.com/mvirkkunen/usb-device", rev = "e58e30f3b9c9bf4aab00ea039d129b964a3fd2d3" }
 
 [dev-dependencies]
 cortex-m-rt = "0.6.7"
 cortex-m-rtfm = "0.4.0"
 panic-semihosting = "0.5.1"
+
+[features]
+default = ["unproven"]
+rt = ["stm32f3xx-hal/rt"]
+stm32f301 = ["stm32f3xx-hal/stm32f301"]
+stm32f318 = ["stm32f3xx-hal/stm32f318"]
+stm32f302 = ["stm32f3xx-hal/stm32f302"]
+stm32f303 = ["stm32f3xx-hal/stm32f303"]
+stm32f373 = ["stm32f3xx-hal/stm32f373"]
+stm32f378 = ["stm32f3xx-hal/stm32f378"]
+stm32f334 = ["stm32f3xx-hal/stm32f334"]
+stm32f328 = ["stm32f3xx-hal/stm32f328"]
+stm32f358 = ["stm32f3xx-hal/stm32f358"]
+stm32f398 = ["stm32f3xx-hal/stm32f398"]
+unproven = ["stm32f3xx-hal/unproven"]
