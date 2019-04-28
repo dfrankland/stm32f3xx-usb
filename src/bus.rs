@@ -1,23 +1,25 @@
-use crate::atomic_mutex::AtomicMutex;
-use crate::endpoint::{
-    calculate_count_rx, Endpoint, EndpointStatus, GenericEndpoint, NUM_ENDPOINTS,
+use crate::{
+    atomic_mutex::AtomicMutex,
+    endpoint::{calculate_count_rx, Endpoint, EndpointStatus, GenericEndpoint, NUM_ENDPOINTS},
 };
 use bare_metal::Mutex;
-use core::cell::RefCell;
-use core::mem;
-use cortex_m::asm::delay;
-use cortex_m::interrupt;
-use stm32f3xx_hal::gpio::{self, gpioa};
-use stm32f3xx_hal::prelude::*;
-use stm32f3xx_hal::rcc;
-use stm32f3xx_hal::stm32::{RCC, USB_FS};
-use usb_device::bus::{PollResult, UsbBusAllocator};
-use usb_device::endpoint::{EndpointAddress, EndpointType};
-use usb_device::{Result, UsbDirection, UsbError};
+use core::{cell::RefCell, mem};
+use cortex_m::{asm::delay, interrupt};
+use stm32f3xx_hal::{
+    gpio::{gpioa, Output, PushPull},
+    prelude::*,
+    rcc,
+    stm32::{RCC, USB_FS},
+};
+use usb_device::{
+    bus::{PollResult, UsbBusAllocator},
+    endpoint::{EndpointAddress, EndpointType},
+    Result, UsbDirection, UsbError,
+};
 
 struct Reset {
     delay: u32,
-    pin: Mutex<RefCell<gpioa::PA12<gpio::Output<gpio::PushPull>>>>,
+    pin: Mutex<RefCell<gpioa::PA12<Output<PushPull>>>>,
 }
 
 /// USB peripheral driver for STM32F3xx microcontrollers.

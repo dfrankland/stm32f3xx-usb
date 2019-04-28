@@ -1,11 +1,9 @@
 use crate::atomic_mutex::AtomicMutex;
 use bare_metal::CriticalSection;
-use core::mem;
-use core::slice;
+use core::{mem, slice};
 use cortex_m::interrupt;
 use stm32f3xx_hal::stm32::USB_FS;
-use usb_device::endpoint::EndpointType;
-use usb_device::{Result, UsbError};
+use usb_device::{endpoint::EndpointType, Result, UsbError};
 use vcell::VolatileCell;
 
 type EndpointBuffer = &'static mut [VolatileCell<u32>];

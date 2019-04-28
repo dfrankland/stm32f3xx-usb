@@ -2,11 +2,9 @@
 
 #![no_std]
 
-mod endpoint;
-
 mod atomic_mutex;
+mod endpoint;
 
 /// USB peripheral driver.
 pub mod bus;
-
-pub use crate::bus::UsbBus;
+pub use bus::UsbBus;

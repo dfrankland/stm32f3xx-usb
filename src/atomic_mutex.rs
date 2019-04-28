@@ -1,7 +1,9 @@
 use bare_metal::CriticalSection;
-use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+    cell::UnsafeCell,
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 pub struct AtomicMutex<T> {
     lock: AtomicBool,
