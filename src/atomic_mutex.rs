@@ -1,15 +1,15 @@
-use core::sync::atomic::{AtomicBool, Ordering};
+use bare_metal::CriticalSection;
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
-use bare_metal::CriticalSection;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub struct AtomicMutex<T> {
     lock: AtomicBool,
     value: UnsafeCell<T>,
 }
 
-unsafe impl<T: Send> Send for AtomicMutex<T> { }
-unsafe impl<T: Send> Sync for AtomicMutex<T> { }
+unsafe impl<T: Send> Send for AtomicMutex<T> {}
+unsafe impl<T: Send> Sync for AtomicMutex<T> {}
 
 impl<T> AtomicMutex<T> {
     pub fn new(value: T) -> AtomicMutex<T> {

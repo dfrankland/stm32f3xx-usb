@@ -1,12 +1,12 @@
-use core::slice;
-use core::mem;
-use bare_metal::CriticalSection;
-use vcell::VolatileCell;
-use cortex_m::interrupt;
-use stm32f1xx_hal::stm32::{USB, usb};
-use usb_device::{Result, UsbError};
-use usb_device::endpoint::EndpointType;
 use crate::atomic_mutex::AtomicMutex;
+use bare_metal::CriticalSection;
+use core::mem;
+use core::slice;
+use cortex_m::interrupt;
+use stm32f1xx_hal::stm32::{usb, USB};
+use usb_device::endpoint::EndpointType;
+use usb_device::{Result, UsbError};
+use vcell::VolatileCell;
 
 type EndpointBuffer = &'static mut [VolatileCell<u32>];
 
@@ -63,16 +63,10 @@ impl Endpoint {
         }
     }
 
-    fn make_buf(addr: usize, size: usize)
-        -> Option<AtomicMutex<&'static mut [VolatileCell<u32>]>>
-    {
-        Some(AtomicMutex::new(
-            unsafe {
-                slice::from_raw_parts_mut(
-                    Self::MEM_ADDR.offset((addr >> 1) as isize),
-                    size >> 1)
-            }
-        ))
+    fn make_buf(addr: usize, size: usize) -> Option<AtomicMutex<&'static mut [VolatileCell<u32>]>> {
+        Some(AtomicMutex::new(unsafe {
+            slice::from_raw_parts_mut(Self::MEM_ADDR.offset((addr >> 1) as isize), size >> 1)
+        }))
     }
 
     pub fn ep_type(&self) -> Option<EndpointType> {
@@ -118,20 +112,26 @@ impl Endpoint {
     pub fn configure(&self, cs: &CriticalSection) {
         let ep_type = match self.ep_type {
             Some(t) => t,
-            None => { return },
+            None => return,
         };
 
-        self.reg().modify(|_, w|
+        self.reg().modify(|_, w| {
             Self::clear_toggle_bits(w)
-                .ctr_rx().clear_bit()
+                .ctr_rx()
+                .clear_bit()
                 // dtog_rx
                 // stat_rx
-                .ep_type().bits(ep_type.bits())
-                .ep_kind().clear_bit()
-                .ctr_tx().clear_bit()
+                .ep_type()
+                .bits(ep_type.bits())
+                .ep_kind()
+                .clear_bit()
+                .ctr_tx()
+                .clear_bit()
                 // dtog_rx
                 // stat_tx
-                .ea().bits(self.index));
+                .ea()
+                .bits(self.index)
+        });
 
         if self.out_buf.is_some() {
             self.set_stat_rx(cs, EndpointStatus::Valid);
@@ -147,7 +147,9 @@ impl Endpoint {
 
         let in_buf = match guard {
             Some(ref b) => b,
-            None => { return Err(UsbError::WouldBlock); }
+            None => {
+                return Err(UsbError::WouldBlock);
+            }
         };
 
         if buf.len() > in_buf.len() << 1 {
@@ -158,7 +160,7 @@ impl Endpoint {
 
         match reg.read().stat_tx().bits().into() {
             EndpointStatus::Valid | EndpointStatus::Disabled => return Err(UsbError::WouldBlock),
-            _ => {},
+            _ => {}
         };
 
         self.write_mem(in_buf, buf);
@@ -191,7 +193,9 @@ impl Endpoint {
 
         let out_buf = match guard {
             Some(ref b) => b,
-            None => { return Err(UsbError::WouldBlock); }
+            None => {
+                return Err(UsbError::WouldBlock);
+            }
         };
 
         let reg = self.reg();
@@ -229,7 +233,7 @@ impl Endpoint {
 
             addr += 1;
 
-            buf = &mut {buf}[2..];
+            buf = &mut { buf }[2..];
         }
 
         if buf.len() > 0 {
@@ -249,33 +253,40 @@ impl Endpoint {
 
     fn clear_toggle_bits(w: &mut usb::epr::W) -> &mut usb::epr::W {
         unsafe {
-            w
-                .dtog_rx().clear_bit()
-                .dtog_tx().clear_bit()
-                .stat_rx().bits(0)
-                .stat_tx().bits(0)
+            w.dtog_rx()
+                .clear_bit()
+                .dtog_tx()
+                .clear_bit()
+                .stat_rx()
+                .bits(0)
+                .stat_tx()
+                .bits(0)
         }
     }
 
     pub fn clear_ctr_rx(&self, _cs: &CriticalSection) {
-        self.reg().modify(|_, w| Self::clear_toggle_bits(w).ctr_rx().clear_bit());
+        self.reg()
+            .modify(|_, w| Self::clear_toggle_bits(w).ctr_rx().clear_bit());
     }
 
     pub fn clear_ctr_tx(&self, _cs: &CriticalSection) {
-        self.reg().modify(|_, w| Self::clear_toggle_bits(w).ctr_tx().clear_bit());
+        self.reg()
+            .modify(|_, w| Self::clear_toggle_bits(w).ctr_tx().clear_bit());
     }
 
     pub fn set_stat_rx(&self, _cs: &CriticalSection, status: EndpointStatus) {
         self.reg().modify(|r, w| unsafe {
             Self::clear_toggle_bits(w)
-                .stat_rx().bits(r.stat_rx().bits() ^ (status as u8))
+                .stat_rx()
+                .bits(r.stat_rx().bits() ^ (status as u8))
         });
     }
 
     pub fn set_stat_tx(&self, _cs: &CriticalSection, status: EndpointStatus) {
         self.reg().modify(|r, w| unsafe {
             Self::clear_toggle_bits(w)
-                .stat_tx().bits(r.stat_tx().bits() ^ (status as u8))
+                .stat_tx()
+                .bits(r.stat_tx().bits() ^ (status as u8))
         });
     }
 }
